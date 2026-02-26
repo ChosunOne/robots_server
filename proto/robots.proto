@@ -1,0 +1,49 @@
+syntax = "proto3";
+package robots;
+
+service RobotsService {
+  rpc GetRobotsTxt(GetRobotsRequest) returns (GetRobotsResponse);
+}
+
+message GetRobotsRequest {
+  string url = 1;
+}
+
+enum AccessResult {
+  ACCESS_RESULT_UNSPECIFIED = 0;
+  ACCESS_RESULT_SUCCESS = 1;
+  ACCESS_RESULT_REDIRECT_SUCCESS = 2;
+  ACCESS_RESULT_TOO_MANY_REDIRECTS = 3;
+  ACCESS_RESULT_UNAVAILABLE = 4;
+  ACCESS_RESULT_UNREACHABLE = 5;
+  ACCESS_RESULT_CACHED = 6;
+}
+
+message GetRobotsResponse {
+  string target_url = 1;
+  string robots_txt_url = 2;
+  AccessResult access_result = 3;
+  int32 http_status_code = 4;
+
+  repeated Group groups = 5;
+  repeated string sitemaps = 6;
+
+  int64 content_length_bytes = 7;
+  bool truncated = 8;
+}
+
+message Group {
+  repeated string user_agents = 1;
+  repeated Rule rules = 2;
+  int32 crawl_delay_seconds = 3;
+}
+
+message Rule {
+  enum RuleType {
+    RULE_TYPE_UNSPECIFIED = 0;
+    RULE_TYPE_ALLOW = 1;
+    RULE_TYPE_DISALLOW = 2;
+  }
+  RuleType rule_type = 1;
+  string path_pattern = 2;
+}
