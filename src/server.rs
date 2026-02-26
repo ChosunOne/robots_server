@@ -6,7 +6,7 @@ use robots::{
 };
 
 pub mod robots {
-    tonic::include_proto!("robots");
+    include!("generated/robots.rs");
 }
 
 pub struct RobotsServer;
