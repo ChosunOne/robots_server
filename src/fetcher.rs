@@ -78,13 +78,13 @@ impl RobotsFetcher {
                         FetchError::Unreachable((e.to_string(), Some(status.as_u16())))
                     })?;
                     if total_bytes + chunk.len() > MAX_ROBOTS_TXT_SIZE {
+                        truncated = true;
                         let remaining = MAX_ROBOTS_TXT_SIZE - total_bytes;
                         let partial = &chunk[..remaining];
                         if let Some(last_nl) = partial.iter().rposition(|&b| b == b'\n') {
                             body.push_str(&String::from_utf8_lossy(&partial[..=last_nl]));
                         } else {
                             body.truncate(last_newline);
-                            truncated = true;
                         }
                         break;
                     }
