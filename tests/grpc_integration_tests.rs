@@ -8,7 +8,6 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn test_full_grpc_success() {
-    // Start mock HTTP server
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/robots.txt"))
@@ -16,7 +15,6 @@ async fn test_full_grpc_success() {
         .mount(&mock_server)
         .await;
 
-    // Start gRPC server
     let addr = "[::1]:50051".parse().unwrap();
     let cache = MokaCache::new();
     let fetcher = RobotsFetcher::new();
@@ -32,10 +30,8 @@ async fn test_full_grpc_success() {
 
     let server_handle = tokio::spawn(server);
 
-    // Get actual port
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // Create gRPC client
     let channel = tonic::transport::Channel::from_static("http://[::1]:50051")
         .connect()
         .await
@@ -44,7 +40,6 @@ async fn test_full_grpc_success() {
     let mut client =
         robots_server::service::robots::robots_service_client::RobotsServiceClient::new(channel);
 
-    // Make request
     let url = format!("http://{}/", mock_server.address());
     let request = tonic::Request::new(GetRobotsRequest { url });
 
@@ -57,7 +52,6 @@ async fn test_full_grpc_success() {
     );
     assert_eq!(response.get_ref().groups.len(), 1);
 
-    // Shutdown server
     tx.send(()).unwrap();
     server_handle.await.unwrap().unwrap();
 }

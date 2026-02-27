@@ -92,6 +92,13 @@ impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
                             http_status_code: s as u32,
                             ..Default::default()
                         };
+                        if let Err(e) = self
+                            .cache
+                            .set(data.robots_txt_url.clone(), data.clone())
+                            .await
+                        {
+                            warn!(error = %e, "Failed to cache robots.txt data");
+                        }
                         Ok(Response::new(data.into()))
                     }
                     Err(e) => {
