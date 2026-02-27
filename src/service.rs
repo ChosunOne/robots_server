@@ -7,7 +7,7 @@ use robots::{
 
 use crate::{
     cache::Cache,
-    fetcher::{FetchError, RobotsFetcher},
+    fetcher::{FetchError, RobotsFetcher, extract_robots_url},
     robots_data::RobotsData,
 };
 
@@ -33,23 +33,30 @@ impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
         request: Request<GetRobotsRequest>,
     ) -> Result<Response<GetRobotsResponse>, Status> {
         let req = request.into_inner();
+        let robots_url = extract_robots_url(&req.url).expect("invalid url");
         println!("Got request: {req:?}");
-        match self.cache.get(&req.url).await {
+        match self.cache.get(&robots_url).await {
             Ok(Some(data)) => Ok(Response::new(data.into())),
             Ok(None) => match self.fetcher.fetch(&req.url).await {
                 Ok(data) => {
-                    self.cache.set(req.url.clone(), data.clone()).await.ok();
+                    self.cache
+                        .set(data.robots_txt_url.clone(), data.clone())
+                        .await
+                        .ok();
                     Ok(Response::new(data.into()))
                 }
-                Err(FetchError::Unavailable(_)) => Ok(Response::new(
-                    RobotsData {
-                        target_url: req.url,
-                        robots_txt_url: "".to_string(),
-                        access_result: AccessResult::Unavailable,
-                        ..Default::default()
-                    }
-                    .into(),
-                )),
+                Err(FetchError::Unavailable(s)) => {
+                    println!("got status code: {s}");
+                    Ok(Response::new(
+                        RobotsData {
+                            target_url: req.url,
+                            robots_txt_url: "".to_string(),
+                            access_result: AccessResult::Unavailable,
+                            ..Default::default()
+                        }
+                        .into(),
+                    ))
+                }
                 Err(e) => Err(Status::internal(e.to_string())),
             },
             Err(e) => Err(Status::internal(e.to_string())),

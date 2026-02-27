@@ -69,7 +69,7 @@ impl RobotsFetcher {
     }
 }
 
-fn extract_robots_url(target_url: &str) -> Result<String, FetchError> {
+pub fn extract_robots_url(target_url: &str) -> Result<String, FetchError> {
     let parsed = Url::parse(target_url)
         .map_err(|e| FetchError::InvalidUrl(format!("Failed to parse URL: {e}")))?;
     let scheme = parsed.scheme();
