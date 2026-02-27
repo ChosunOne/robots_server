@@ -1,9 +1,9 @@
-use tonic::{Request, Response, Status, transport::Server};
+use tonic::{Request, Response, Status};
 
 use robots::{
-    AccessResult, GetRobotsRequest, GetRobotsResponse,
-    robots_service_server::{RobotsService, RobotsServiceServer},
+    AccessResult, GetRobotsRequest, GetRobotsResponse, robots_service_server::RobotsService,
 };
+use tracing::{Span, debug, info, instrument, warn};
 
 use crate::{
     cache::Cache,
@@ -28,6 +28,7 @@ impl<T: Cache<String, RobotsData>> RobotsServer<T> {
 
 #[tonic::async_trait]
 impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
+    #[instrument(skip(self, request), fields(url = %request.get_ref().url, robots_url = tracing::field::Empty))]
     async fn get_robots_txt(
         &self,
         request: Request<GetRobotsRequest>,
@@ -35,32 +36,74 @@ impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
         let req = request.into_inner();
         let robots_url =
             extract_robots_url(&req.url).map_err(|e| Status::invalid_argument(e.to_string()))?;
-        println!("Got request: {req:?}");
+
+        Span::current().record("robots_url", &robots_url);
+        info!("Processing robots.txt request");
+
         match self.cache.get(&robots_url).await {
-            Ok(Some(data)) => Ok(Response::new(data.into())),
-            Ok(None) => match self.fetcher.fetch(&req.url).await {
-                Ok(data) => {
-                    self.cache
-                        .set(data.robots_txt_url.clone(), data.clone())
-                        .await
-                        .ok();
-                    Ok(Response::new(data.into()))
-                }
-                Err(FetchError::Unavailable(s)) => {
-                    println!("got status code: {s}");
-                    Ok(Response::new(
-                        RobotsData {
-                            target_url: req.url,
-                            robots_txt_url: "".to_string(),
-                            access_result: AccessResult::Unavailable,
-                            ..Default::default()
+            Ok(Some(data)) => {
+                debug!("Cache hit for request");
+                Ok(Response::new(data.into()))
+            }
+            Ok(None) => {
+                debug!("Cache miss for request, fetching from origin");
+                match self.fetcher.fetch(&req.url).await {
+                    Ok(data) => {
+                        info!(
+                            status_code = data.http_status_code,
+                            content_length = data.content_length_bytes,
+                            "Successfully fetched robots.txt"
+                        );
+                        if let Err(e) = self
+                            .cache
+                            .set(data.robots_txt_url.clone(), data.clone())
+                            .await
+                        {
+                            warn!(error = %e, "Failed to cache robots.txt data");
                         }
-                        .into(),
-                    ))
+                        Ok(Response::new(data.into()))
+                    }
+                    Err(FetchError::Unavailable(s)) => {
+                        info!(status_code = s, "robots.txt unavailable");
+                        let data = RobotsData {
+                            target_url: req.url,
+                            robots_txt_url: robots_url,
+                            access_result: AccessResult::Unavailable,
+                            http_status_code: s as u32,
+                            ..Default::default()
+                        };
+
+                        if let Err(e) = self
+                            .cache
+                            .set(data.robots_txt_url.clone(), data.clone())
+                            .await
+                        {
+                            warn!(error = %e, "Failed to cache robots.txt data");
+                        }
+                        Ok(Response::new(data.into()))
+                    }
+                    Err(FetchError::Unreachable(e)) => {
+                        info!(error = %e.0, status = e.1, "robots.txt unreachable");
+                        let s = e.1.unwrap_or(0);
+                        let data = RobotsData {
+                            target_url: req.url,
+                            robots_txt_url: robots_url,
+                            access_result: AccessResult::Unreachable,
+                            http_status_code: s as u32,
+                            ..Default::default()
+                        };
+                        Ok(Response::new(data.into()))
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "Failed to fetch robots.txt");
+                        Err(Status::internal(e.to_string()))
+                    }
                 }
-                Err(e) => Err(Status::internal(e.to_string())),
-            },
-            Err(e) => Err(Status::internal(e.to_string())),
+            }
+            Err(e) => {
+                warn!(error = %e, "Cache error");
+                Err(Status::internal(e.to_string()))
+            }
         }
     }
 }
