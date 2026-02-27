@@ -5,7 +5,11 @@ use robots::{
     robots_service_server::{RobotsService, RobotsServiceServer},
 };
 
-use crate::{cache::Cache, robots_data::RobotsData};
+use crate::{
+    cache::Cache,
+    fetcher::{FetchError, RobotsFetcher},
+    robots_data::RobotsData,
+};
 
 pub mod robots {
     include!("generated/robots.rs");
@@ -13,11 +17,12 @@ pub mod robots {
 
 pub struct RobotsServer<T: Cache<String, RobotsData>> {
     cache: T,
+    fetcher: RobotsFetcher,
 }
 
 impl<T: Cache<String, RobotsData>> RobotsServer<T> {
-    pub fn new(cache: T) -> Self {
-        Self { cache }
+    pub fn new(cache: T, fetcher: RobotsFetcher) -> Self {
+        Self { cache, fetcher }
     }
 }
 
@@ -29,18 +34,25 @@ impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
     ) -> Result<Response<GetRobotsResponse>, Status> {
         let req = request.into_inner();
         println!("Got request: {req:?}");
-        let data = self
-            .cache
-            .get(&req.url)
-            .await
-            .map_err(|e| Status::unavailable("Cache unavailable"))?
-            .unwrap_or_else(|| RobotsData {
-                target_url: req.url.clone(),
-                robots_txt_url: "".to_string(),
-                access_result: AccessResult::Unavailable,
-                ..Default::default()
-            });
-
-        Ok(Response::new(data.into()))
+        match self.cache.get(&req.url).await {
+            Ok(Some(data)) => Ok(Response::new(data.into())),
+            Ok(None) => match self.fetcher.fetch(&req.url).await {
+                Ok(data) => {
+                    self.cache.set(req.url.clone(), data.clone()).await.ok();
+                    Ok(Response::new(data.into()))
+                }
+                Err(FetchError::Unavailable(_)) => Ok(Response::new(
+                    RobotsData {
+                        target_url: req.url,
+                        robots_txt_url: "".to_string(),
+                        access_result: AccessResult::Unavailable,
+                        ..Default::default()
+                    }
+                    .into(),
+                )),
+                Err(e) => Err(Status::internal(e.to_string())),
+            },
+            Err(e) => Err(Status::internal(e.to_string())),
+        }
     }
 }

@@ -1,5 +1,6 @@
 use robots_server::{
     cache::MokaCache,
+    fetcher::RobotsFetcher,
     service::{RobotsServer, robots::robots_service_server::RobotsServiceServer},
 };
 use tonic::transport::Server;
@@ -8,7 +9,8 @@ use tonic::transport::Server;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse()?;
     let cache = MokaCache::new();
-    let service = RobotsServer::new(cache);
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
 
     Server::builder()
         .add_service(RobotsServiceServer::new(service))

@@ -37,7 +37,7 @@ impl RobotsFetcher {
     }
 
     pub async fn fetch(&self, target_url: &str) -> Result<RobotsData, FetchError> {
-        let robots_url = extract_robots_url(target_url);
+        let robots_url = extract_robots_url(target_url)?;
         let response = match self.client.get(&robots_url).send().await {
             Ok(r) => r,
             Err(e) if e.is_timeout() => return Err(FetchError::Timeout),
@@ -84,7 +84,7 @@ fn extract_robots_url(target_url: &str) -> Result<String, FetchError> {
     let port = parsed.port();
     let robots_url = match port {
         Some(p) if (scheme == "http" && p != 80) || (scheme == "https" && p != 443) => {
-            format!("{scheme}://{host}:{port}/robots.txt")
+            format!("{scheme}://{host}:{p}/robots.txt")
         }
         _ => format!("{scheme}://{host}/robots.txt"),
     };
