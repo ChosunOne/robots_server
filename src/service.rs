@@ -5,31 +5,42 @@ use robots::{
     robots_service_server::{RobotsService, RobotsServiceServer},
 };
 
+use crate::{cache::Cache, robots_data::RobotsData};
+
 pub mod robots {
     include!("generated/robots.rs");
 }
 
-pub struct RobotsServer;
+pub struct RobotsServer<T: Cache<String, RobotsData>> {
+    cache: T,
+}
+
+impl<T: Cache<String, RobotsData>> RobotsServer<T> {
+    pub fn new(cache: T) -> Self {
+        Self { cache }
+    }
+}
 
 #[tonic::async_trait]
-impl RobotsService for RobotsServer {
+impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
     async fn get_robots_txt(
         &self,
         request: Request<GetRobotsRequest>,
     ) -> Result<Response<GetRobotsResponse>, Status> {
         let req = request.into_inner();
         println!("Got request: {req:?}");
-        let response = GetRobotsResponse {
-            target_url: req.url,
-            robots_txt_url: "https://example.com/robots.txt".to_string(),
-            access_result: AccessResult::Cached as i32,
-            http_status_code: 200,
-            groups: vec![],
-            sitemaps: vec![],
-            content_length_bytes: 0,
-            truncated: false,
-        };
+        let data = self
+            .cache
+            .get(&req.url)
+            .await
+            .map_err(|e| Status::unavailable("Cache unavailable"))?
+            .unwrap_or_else(|| RobotsData {
+                target_url: req.url.clone(),
+                robots_txt_url: "".to_string(),
+                access_result: AccessResult::Unavailable,
+                ..Default::default()
+            });
 
-        Ok(Response::new(response))
+        Ok(Response::new(data.into()))
     }
 }

@@ -2,7 +2,7 @@ use crate::service::robots::{
     AccessResult, GetRobotsResponse, Group as ProtoBufGroup, Rule as ProtoBufRule,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RobotsData {
     pub target_url: String,
     pub robots_txt_url: String,
