@@ -94,6 +94,9 @@ impl RobotsData {
 
     /// RFC 9309 Section 2.2.2: Path matching with wildcards and special characters
     fn path_matches_rfc9309(path: &str, pattern: &str) -> bool {
+        if pattern.is_empty() {
+            return false;
+        }
         // Handle end-of-path anchor $ (RFC 9309 Section 2.2.3)
         if pattern.ends_with('$') {
             let prefix = &pattern[..pattern.len() - 1];

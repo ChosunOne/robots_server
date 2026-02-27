@@ -364,3 +364,291 @@ async fn test_is_allowed_case_insensitive_user_agent() {
     let response = service.is_allowed(request).await.unwrap();
     assert!(!response.get_ref().allowed);
 }
+
+#[tokio::test]
+async fn test_is_allowed_empty_pattern() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow:"))
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let url = format!("http://{}/anything", mock_server.address());
+    let request = Request::new(IsAllowedRequest {
+        target_url: url,
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    // Empty disallow means nothing is disallowed
+    assert!(response.get_ref().allowed);
+}
+
+#[tokio::test]
+async fn test_is_allowed_multiple_wildcards() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /a*b*c*d/"),
+        )
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let base_url = format!("http://{}", mock_server.address());
+    // Should match
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/axbyczd/page.html", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // Should not match
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/other/page.html", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+}
+
+#[tokio::test]
+async fn test_is_allowed_end_anchor_only() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /secret$"),
+        )
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let base_url = format!("http://{}", mock_server.address());
+    // Exact match - should be blocked
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/secret", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // With trailing slash - should be allowed
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/secret/", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+    // With extra path - should be allowed
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/secret/more", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+}
+#[tokio::test]
+async fn test_is_allowed_equivalent_length_tie() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("User-agent: *\nDisallow: /admin/\nAllow: /admin/"),
+        )
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let url = format!("http://{}/admin/page.html", mock_server.address());
+    let request = Request::new(IsAllowedRequest {
+        target_url: url,
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    // RFC 9309: allow wins on tie with equivalent length
+    assert!(response.get_ref().allowed);
+}
+#[tokio::test]
+async fn test_is_allowed_query_string_encoding() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /search?"),
+        )
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let base_url = format!("http://{}", mock_server.address());
+    // Should block any path starting with /search?
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/search?q=test", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // /search without query should be allowed
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/search", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+}
+#[tokio::test]
+async fn test_is_allowed_consecutive_wildcards() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /a**b/"))
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let base_url = format!("http://{}", mock_server.address());
+    // Consecutive wildcards should work like single wildcard
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/axxxb/page.html", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+}
+#[tokio::test]
+async fn test_is_allowed_wildcard_at_start() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: *.pdf$"))
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let base_url = format!("http://{}", mock_server.address());
+    // Should block any PDF
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/documents/file.pdf", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // Should block PDF at root
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/file.pdf", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // HTML should be allowed
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/file.html", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+}
+#[tokio::test]
+async fn test_is_allowed_no_user_agent_match() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("User-agent: SpecificBot\nDisallow: /"),
+        )
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let url = format!("http://{}/page.html", mock_server.address());
+
+    // Different user agent should be allowed (no rules apply)
+    let request = Request::new(IsAllowedRequest {
+        target_url: url,
+        user_agent: "OtherBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+}
+#[tokio::test]
+async fn test_is_allowed_multiple_specific_user_agents() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("User-agent: BotOne\nUser-agent: BotTwo\nDisallow: /private/\n\nUser-agent: *\nAllow: /"),
+        )
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let base_url = format!("http://{}", mock_server.address());
+    // BotOne should be denied
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/private/page.html", base_url),
+        user_agent: "BotOne".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // BotTwo should be denied
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/private/page.html", base_url),
+        user_agent: "BotTwo".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // OtherBot should be allowed
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/private/page.html", base_url),
+        user_agent: "OtherBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+}
+#[tokio::test]
+async fn test_is_allowed_root_path_only() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /$"))
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let base_url = format!("http://{}", mock_server.address());
+    // Root path should be blocked
+    let request = Request::new(IsAllowedRequest {
+        target_url: base_url.clone(),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // Root with trailing slash should be blocked
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(!response.get_ref().allowed);
+    // Subpaths should be allowed
+    let request = Request::new(IsAllowedRequest {
+        target_url: format!("{}/page.html", base_url),
+        user_agent: "MyBot".to_string(),
+    });
+    let response = service.is_allowed(request).await.unwrap();
+    assert!(response.get_ref().allowed);
+}
