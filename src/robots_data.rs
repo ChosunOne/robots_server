@@ -20,7 +20,6 @@ pub struct RobotsData {
 pub struct Group {
     pub user_agents: Vec<String>,
     pub rules: Vec<Rule>,
-    pub crawl_delay_seconds: i32,
 }
 
 #[derive(Clone, Debug)]
@@ -43,7 +42,6 @@ impl From<Group> for ProtoBufGroup {
         Self {
             user_agents: value.user_agents,
             rules: value.rules.into_iter().map(Into::into).collect(),
-            crawl_delay_seconds: value.crawl_delay_seconds,
         }
     }
 }
@@ -84,7 +82,6 @@ impl From<RobotsTxt> for RobotsData {
             groups.push(Group {
                 user_agents: vec![user_agent.clone()],
                 rules,
-                crawl_delay_seconds: 0,
             });
         }
 

@@ -35,7 +35,6 @@ message GetRobotsResponse {
 message Group {
   repeated string user_agents = 1;
   repeated Rule rules = 2;
-  int32 crawl_delay_seconds = 3;
 }
 
 message Rule {

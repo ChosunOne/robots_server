@@ -29,8 +29,6 @@ pub struct Group {
     pub user_agents: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(message, repeated, tag = "2")]
     pub rules: ::prost::alloc::vec::Vec<Rule>,
-    #[prost(int32, tag = "3")]
-    pub crawl_delay_seconds: i32,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Rule {
