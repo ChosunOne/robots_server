@@ -242,3 +242,61 @@ async fn test_truncation_no_newlines() {
     );
     assert!(result.truncated, "Should be marked as truncated");
 }
+
+#[tokio::test]
+async fn test_fetch_follows_redirect() {
+    let redirect_server = MockServer::start().await;
+    let target_server = MockServer::start().await;
+    // Target server returns actual robots.txt
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /"))
+        .mount(&target_server)
+        .await;
+    // Redirect server returns 301 to target
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(301).insert_header(
+            "location",
+            format!("http://{}/robots.txt", target_server.address()),
+        ))
+        .mount(&redirect_server)
+        .await;
+    let fetcher = RobotsFetcher::new();
+    let url = format!("http://{}/", redirect_server.address());
+    let result = fetcher.fetch(&url).await.unwrap();
+    assert_eq!(result.http_status_code, 200);
+    assert_eq!(result.access_result, AccessResult::Success);
+}
+
+#[tokio::test]
+async fn test_fetch_too_many_redirects() {
+    // Create a chain of 7 servers (6 redirects)
+    let mut servers = Vec::new();
+    for _ in 0..7 {
+        servers.push(MockServer::start().await);
+    }
+
+    // Last server returns actual content
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /"))
+        .mount(&servers[6])
+        .await;
+    // Each server redirects to the next (6 redirects total)
+    for i in 0..6 {
+        Mock::given(method("GET"))
+            .and(path("/robots.txt"))
+            .respond_with(ResponseTemplate::new(301).insert_header(
+                "location",
+                format!("http://{}/robots.txt", servers[i + 1].address()),
+            ))
+            .mount(&servers[i])
+            .await;
+    }
+    let fetcher = RobotsFetcher::new();
+    let url = format!("http://{}/", servers[0].address());
+    let result = fetcher.fetch(&url).await;
+    // Should fail after 5 redirects (6th redirect exceeds limit)
+    assert!(result.is_err());
+}
