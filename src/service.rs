@@ -33,7 +33,8 @@ impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
         request: Request<GetRobotsRequest>,
     ) -> Result<Response<GetRobotsResponse>, Status> {
         let req = request.into_inner();
-        let robots_url = extract_robots_url(&req.url).expect("invalid url");
+        let robots_url =
+            extract_robots_url(&req.url).map_err(|e| Status::invalid_argument(e.to_string()))?;
         println!("Got request: {req:?}");
         match self.cache.get(&robots_url).await {
             Ok(Some(data)) => Ok(Response::new(data.into())),

@@ -55,6 +55,7 @@ impl RobotsFetcher {
                 let robots = RobotsTxt::parse(&body);
                 let mut data: RobotsData = robots.into();
                 data.content_length_bytes = content_length;
+                data.robots_txt_url = robots_url.clone();
                 data.target_url = target_url.to_string();
                 data.http_status_code = status.as_u16() as u32;
                 data.access_result = AccessResult::Success;
