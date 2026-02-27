@@ -1,7 +1,7 @@
 use crate::robots_data::RobotsData;
 use crate::service::robots::AccessResult;
 use futures_util::StreamExt;
-use reqwest::Client;
+use reqwest::{Client, redirect::Policy};
 use robotstxt_rs::RobotsTxt;
 use std::time::Duration;
 use thiserror::Error;
@@ -36,6 +36,7 @@ impl RobotsFetcher {
         Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(30))
+                .redirect(Policy::limited(5))
                 .build()
                 .expect("Failed to build HTTP client"),
         }
@@ -66,6 +67,18 @@ impl RobotsFetcher {
 
         match status.as_u16() {
             200..=299 => {
+                let content_type = response
+                    .headers()
+                    .get("content-type")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                if !content_type.starts_with("text/plain") {
+                    debug!(content_type = %content_type, "Invalid content-type header for robots.txt");
+                    return Err(FetchError::ParseError(
+                        "Expected text/plain got {content_type}".to_string(),
+                    ));
+                }
+
                 let mut body = String::new();
                 let mut stream = response.bytes_stream();
                 let mut total_bytes = 0;
