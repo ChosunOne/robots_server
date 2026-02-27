@@ -1,7 +1,7 @@
 use robotstxt_rs::RobotsTxt;
 
 use crate::service::robots::{
-    AccessResult, GetRobotsResponse, Group as ProtoBufGroup, Rule as ProtoBufRule,
+    AccessResult, GetRobotsResponse, Group as ProtoBufGroup, Rule as ProtoBufRule, rule::RuleType,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -14,6 +14,45 @@ pub struct RobotsData {
     pub sitemaps: Vec<String>,
     pub content_length_bytes: u64,
     pub truncated: bool,
+}
+
+impl RobotsData {
+    pub fn is_allowed(&self, user_agent: &str, path: &str) -> bool {
+        let robots = RobotsTxt::parse(&String::from(self));
+        robots.can_fetch(user_agent, path)
+    }
+}
+
+impl From<&RobotsData> for String {
+    fn from(value: &RobotsData) -> Self {
+        let mut lines = Vec::new();
+
+        for group in &value.groups {
+            for ua in &group.user_agents {
+                lines.push(format!("User-agent: {ua}"));
+            }
+
+            for rule in &group.rules {
+                let Ok(rule_type) = RuleType::try_from(rule.rule_type) else {
+                    continue;
+                };
+                let directive = match rule_type {
+                    RuleType::Allow => "Allow",
+                    RuleType::Disallow => "Disallow",
+                    _ => continue,
+                };
+                lines.push(format!("{directive}: {}", rule.path_pattern));
+            }
+
+            lines.push(String::new());
+        }
+
+        for sitemap in &value.sitemaps {
+            lines.push(format!("Sitemap: {sitemap}"));
+        }
+
+        lines.join("\n")
+    }
 }
 
 #[derive(Clone, Debug)]

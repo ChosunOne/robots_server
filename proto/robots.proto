@@ -3,6 +3,7 @@ package robots;
 
 service RobotsService {
   rpc GetRobotsTxt(GetRobotsRequest) returns (GetRobotsResponse);
+  rpc IsAllowed(IsAllowedRequest) returns (IsAllowedResponse);
 }
 
 message GetRobotsRequest {
@@ -45,4 +46,13 @@ message Rule {
   }
   RuleType rule_type = 1;
   string path_pattern = 2;
+}
+
+message IsAllowedRequest {
+  string target_url = 1;
+  string user_agent = 2;
+}
+
+message IsAllowedResponse {
+  bool allowed = 1;
 }
