@@ -4,6 +4,7 @@ use reqwest::Client;
 use robotstxt_rs::RobotsTxt;
 use std::time::Duration;
 use thiserror::Error;
+use url::Url;
 
 #[derive(Error, Debug)]
 pub enum FetchError {
@@ -68,6 +69,24 @@ impl RobotsFetcher {
     }
 }
 
-fn extract_robots_url(target_url: &str) -> String {
-    todo!()
+fn extract_robots_url(target_url: &str) -> Result<String, FetchError> {
+    let parsed = Url::parse(target_url)
+        .map_err(|e| FetchError::InvalidUrl(format!("Failed to parse URL: {e}")))?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return Err(FetchError::InvalidUrl(format!(
+            "Unsupported scheme: {scheme}"
+        )));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| FetchError::InvalidUrl("URL has no host".to_string()))?;
+    let port = parsed.port();
+    let robots_url = match port {
+        Some(p) if (scheme == "http" && p != 80) || (scheme == "https" && p != 443) => {
+            format!("{scheme}://{host}:{port}/robots.txt")
+        }
+        _ => format!("{scheme}://{host}/robots.txt"),
+    };
+    Ok(robots_url)
 }
