@@ -1,11 +1,14 @@
 use crate::robots_data::RobotsData;
 use crate::service::robots::AccessResult;
+use futures_util::StreamExt;
 use reqwest::Client;
 use robotstxt_rs::RobotsTxt;
 use std::time::Duration;
 use thiserror::Error;
 use tracing::{debug, info, instrument};
 use url::Url;
+
+const MAX_ROBOTS_TXT_SIZE: usize = 550 * 1024;
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum FetchError {
@@ -63,13 +66,38 @@ impl RobotsFetcher {
 
         match status.as_u16() {
             200..=299 => {
-                let body = response.text().await.map_err(|e| {
-                    info!(error = %e, "Failed to read request body");
-                    FetchError::Unreachable((
-                        "unsupported robots.txt format".to_string(),
-                        Some(status.as_u16()),
-                    ))
-                })?;
+                let mut body = String::new();
+                let mut stream = response.bytes_stream();
+                let mut total_bytes = 0;
+                let mut last_newline = 0;
+                let mut truncated = false;
+
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.map_err(|e| {
+                        debug!(error = %e, "invalid chunk in robots.txt");
+                        FetchError::Unreachable((e.to_string(), Some(status.as_u16())))
+                    })?;
+                    if total_bytes + chunk.len() > MAX_ROBOTS_TXT_SIZE {
+                        let remaining = MAX_ROBOTS_TXT_SIZE - total_bytes;
+                        let partial = &chunk[..remaining];
+                        if let Some(last_nl) = partial.iter().rposition(|&b| b == b'\n') {
+                            body.push_str(&String::from_utf8_lossy(&partial[..=last_nl]));
+                        } else {
+                            body.truncate(last_newline);
+                            truncated = true;
+                        }
+                        break;
+                    }
+
+                    for (i, &byte) in chunk.iter().enumerate() {
+                        if byte == b'\n' {
+                            last_newline = body.len() + i;
+                        }
+                    }
+
+                    body.push_str(&String::from_utf8_lossy(&chunk));
+                    total_bytes += chunk.len();
+                }
 
                 debug!(body_len = body.len(), "Parsing robots.txt content");
 
@@ -80,10 +108,12 @@ impl RobotsFetcher {
                 data.target_url = target_url.to_string();
                 data.http_status_code = status.as_u16() as u32;
                 data.access_result = AccessResult::Success;
+                data.truncated = truncated;
 
                 info!(
                     groups_count = data.groups.len(),
                     sitemaps_count = data.sitemaps.len(),
+                    truncated = data.truncated,
                     "Parsed robots.txt"
                 );
 

@@ -16,7 +16,7 @@ async fn test_service_cache_miss_then_hit() {
         .respond_with(
             ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /private"),
         )
-        .expect(1) // Should only be called once
+        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -26,18 +26,13 @@ async fn test_service_cache_miss_then_hit() {
 
     let url = format!("http://{}/", mock_server.address());
 
-    // First request - cache miss
     let request = Request::new(GetRobotsRequest { url: url.clone() });
     let response = service.get_robots_txt(request).await.unwrap();
     assert_eq!(response.get_ref().http_status_code, 200);
 
-    // Second request - cache hit
     let request = Request::new(GetRobotsRequest { url: url.clone() });
     let response = service.get_robots_txt(request).await.unwrap();
     assert_eq!(response.get_ref().http_status_code, 200);
-
-    // Verify mock was only called once
-    // (wiremock will fail if called more than once due to .expect(1))
 }
 #[tokio::test]
 async fn test_service_404_is_cached() {
@@ -46,7 +41,7 @@ async fn test_service_404_is_cached() {
     Mock::given(method("GET"))
         .and(path("/robots.txt"))
         .respond_with(ResponseTemplate::new(404))
-        .expect(1) // Should only be called once
+        .expect(1)
         .mount(&mock_server)
         .await;
 
@@ -56,7 +51,6 @@ async fn test_service_404_is_cached() {
 
     let url = format!("http://{}/", mock_server.address());
 
-    // First request - should cache 404
     let request = Request::new(GetRobotsRequest { url: url.clone() });
     let response = service.get_robots_txt(request).await.unwrap();
     assert_eq!(
@@ -64,7 +58,6 @@ async fn test_service_404_is_cached() {
         AccessResult::Unavailable as i32
     );
 
-    // Second request - should be cached
     let request = Request::new(GetRobotsRequest { url: url.clone() });
     let response = service.get_robots_txt(request).await.unwrap();
     assert_eq!(
@@ -89,7 +82,6 @@ async fn test_service_500_is_cached() {
 
     let url = format!("http://{}/", mock_server.address());
 
-    // First request - should cache 500
     let request = Request::new(GetRobotsRequest { url: url.clone() });
     let response = service.get_robots_txt(request).await.unwrap();
     assert_eq!(
@@ -97,7 +89,6 @@ async fn test_service_500_is_cached() {
         AccessResult::Unreachable as i32
     );
 
-    // Second request - should be cached
     let request = Request::new(GetRobotsRequest { url: url.clone() });
     let response = service.get_robots_txt(request).await.unwrap();
     assert_eq!(
@@ -127,13 +118,13 @@ async fn test_service_different_urls_different_cache() {
     Mock::given(method("GET"))
         .and(path("/robots.txt"))
         .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nAllow: /"))
-        .expect(1) // Called once per unique domain
+        .expect(1)
         .mount(&mock_server_1)
         .await;
     Mock::given(method("GET"))
         .and(path("/robots.txt"))
         .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nAllow: /"))
-        .expect(1) // Called once per unique domain
+        .expect(1)
         .mount(&mock_server_2)
         .await;
 
@@ -161,20 +152,16 @@ async fn test_service_timeout_is_cached() {
                 .set_delay(std::time::Duration::from_secs(31)) // Exceeds 30s timeout
                 .set_body_string("User-agent: *\nDisallow: /"),
         )
-        .expect(1) // Should only be called once
+        .expect(1)
         .mount(&mock_server)
         .await;
     let cache = MokaCache::new();
     let fetcher = RobotsFetcher::new();
     let service = RobotsServer::new(cache, fetcher);
     let url = format!("http://{}/", mock_server.address());
-    // First request - should timeout and cache
     let request = Request::new(GetRobotsRequest { url: url.clone() });
-    let response = service.get_robots_txt(request).await;
-    // Currently returns Err(Status::internal) - doesn't cache!
+    let _ = service.get_robots_txt(request).await;
 
-    // Second request - should be cached (but currently isn't)
     let request = Request::new(GetRobotsRequest { url: url.clone() });
-    let response = service.get_robots_txt(request).await;
-    // This will also try to fetch and timeout again
+    let _ = service.get_robots_txt(request).await;
 }
