@@ -10,6 +10,7 @@ A high-performance gRPC server for fetching, caching, and querying robots.txt fi
 - Redirect Following: Follows up to 5 redirects per RFC 9309
 - Forked Parser: Uses a custom fork of robotstxt-rs for proper consecutive user-agent handling
 Architecture
+```
 ┌─────────────────┐     gRPC      ┌──────────────────┐
 │   Client        │◄─────────────►│  robots-server   │
 │  (grpcurl, etc) │               │                  │
@@ -29,6 +30,7 @@ Architecture
                                   │  │    rs)     │  │
                                   │  └────────────┘  │
                                   └──────────────────┘
+```
 # Quick Start
 Building
 ```
@@ -110,6 +112,7 @@ cargo test -- --nocapture
 # Run integration tests only
 cargo test --test service_integration_tests
 # Project Structure
+```
 robots-server/
 ├── Cargo.toml              # Project configuration
 ├── Cargo.lock              # Dependency lock file
@@ -130,6 +133,7 @@ robots-server/
 │   ├── cache_tests.rs
 │   └── robots_url_tests.rs
 └── AGENTS.md               # Guidelines for AI agents
+```
 # RFC 9309 Compliance
 This implementation follows RFC 9309 (Robots Exclusion Protocol):
 - Case-insensitive user-agent matching: Googlebot matches googlebot
