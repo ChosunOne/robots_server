@@ -33,16 +33,3 @@ impl RobotsService for RobotsServer {
         Ok(Response::new(response))
     }
 }
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
-    let service = RobotsServer;
-
-    Server::builder()
-        .add_service(RobotsServiceServer::new(service))
-        .serve(addr)
-        .await?;
-
-    Ok(())
-}
