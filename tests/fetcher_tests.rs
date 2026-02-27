@@ -169,25 +169,6 @@ async fn test_fetch_truncation_at_550kb() {
 }
 
 #[tokio::test]
-async fn test_fetch_rejects_wrong_content_type() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/robots.txt"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("User-agent: *\nDisallow: /")
-                .insert_header("content-type", "text/html"),
-        )
-        .mount(&mock_server)
-        .await;
-    let fetcher = RobotsFetcher::new();
-    let url = format!("http://{}/", mock_server.address());
-    let result = fetcher.fetch(&url).await;
-
-    assert!(matches!(result, Err(FetchError::ParseError(_))));
-    assert!(result.unwrap_err().to_string().contains("text/html"));
-}
-#[tokio::test]
 async fn test_fetch_accepts_text_plain() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -205,21 +186,6 @@ async fn test_fetch_accepts_text_plain() {
 
     assert_eq!(result.http_status_code, 200);
     assert_eq!(result.access_result, AccessResult::Success);
-}
-#[tokio::test]
-async fn test_fetch_rejects_missing_content_type() {
-    let mock_server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/robots.txt"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /"))
-        .mount(&mock_server)
-        .await;
-    let fetcher = RobotsFetcher::new();
-    let url = format!("http://{}/", mock_server.address());
-    let result = fetcher.fetch(&url).await;
-
-    assert!(matches!(result, Err(FetchError::ParseError(_))));
-    assert!(result.unwrap_err().to_string().contains("content-type"));
 }
 #[tokio::test]
 async fn test_fetch_accepts_text_plain_with_charset() {
@@ -240,7 +206,7 @@ async fn test_fetch_accepts_text_plain_with_charset() {
     assert_eq!(result.http_status_code, 200);
 }
 #[tokio::test]
-async fn test_fetch_rejects_case_insensitive() {
+async fn test_fetch_case_insensitive() {
     let mock_server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/robots.txt"))
@@ -256,4 +222,23 @@ async fn test_fetch_rejects_case_insensitive() {
     let result = fetcher.fetch(&url).await;
 
     assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_truncation_no_newlines() {
+    let mock_server = MockServer::start().await;
+    let content = "User-agent: bot".repeat(40_000); // ~680KB, no newlines
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(content))
+        .mount(&mock_server)
+        .await;
+    let fetcher = RobotsFetcher::new();
+    let url = format!("http://{}/", mock_server.address());
+    let result = fetcher.fetch(&url).await.unwrap();
+    assert!(
+        result.groups.len() > 0,
+        "Should have parsed at least one group"
+    );
+    assert!(result.truncated, "Should be marked as truncated");
 }

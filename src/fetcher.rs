@@ -74,9 +74,9 @@ impl RobotsFetcher {
                     .unwrap_or("");
                 if !content_type.starts_with("text/plain") {
                     debug!(content_type = %content_type, "Invalid content-type header for robots.txt");
-                    return Err(FetchError::ParseError(
-                        "Expected text/plain got {content_type}".to_string(),
-                    ));
+                    return Err(FetchError::ParseError(format!(
+                        "Expected text/plain got {content_type}"
+                    )));
                 }
 
                 let mut body = String::new();
@@ -97,8 +97,10 @@ impl RobotsFetcher {
                         let partial = &chunk[..remaining];
                         if let Some(last_nl) = partial.iter().rposition(|&b| b == b'\n') {
                             body.push_str(&String::from_utf8_lossy(&partial[..=last_nl]));
-                        } else {
+                        } else if last_newline > 0 {
                             body.truncate(last_newline);
+                        } else {
+                            body.push_str(&String::from_utf8_lossy(partial));
                         }
                         break;
                     }
