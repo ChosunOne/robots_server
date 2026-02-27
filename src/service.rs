@@ -1,7 +1,7 @@
 use tonic::{Request, Response, Status, transport::Server};
 
 use robots::{
-    GetRobotsRequest, GetRobotsResponse,
+    AccessResult, GetRobotsRequest, GetRobotsResponse,
     robots_service_server::{RobotsService, RobotsServiceServer},
 };
 
@@ -22,7 +22,7 @@ impl RobotsService for RobotsServer {
         let response = GetRobotsResponse {
             target_url: req.url,
             robots_txt_url: "https://example.com/robots.txt".to_string(),
-            access_result: 1,
+            access_result: AccessResult::Cached as i32,
             http_status_code: 200,
             groups: vec![],
             sitemaps: vec![],
