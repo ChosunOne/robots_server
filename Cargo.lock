@@ -1565,8 +1565,7 @@ dependencies = [
 [[package]]
 name = "robotstxt-rs"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f041def350ff60567376b65f35405e5e5a3e8b42afc7d89de2ea5d8fbaf0937e"
+source = "git+https://github.com/ChosunOne/robots-txt.git#c007d4774eeb147663e4232808cead7a6b315a23"
 dependencies = [
  "reqwest 0.12.28",
  "tokio",

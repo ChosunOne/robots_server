@@ -245,7 +245,7 @@ async fn test_is_allowed_specific_user_agent() {
     assert!(response.get_ref().allowed);
 }
 #[tokio::test]
-async fn test_is_allowed_unreachable_robots_txt() {
+async fn test_is_allowed_unavailable_robots_txt() {
     let mock_server = MockServer::start().await;
 
     let cache = MokaCache::new();
@@ -259,7 +259,7 @@ async fn test_is_allowed_unreachable_robots_txt() {
     });
 
     let response = service.is_allowed(request).await.unwrap();
-    assert!(!response.get_ref().allowed);
+    assert!(response.get_ref().allowed);
 }
 #[tokio::test]
 async fn test_is_allowed_with_query_string() {
