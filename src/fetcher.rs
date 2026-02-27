@@ -7,7 +7,7 @@ use thiserror::Error;
 use tracing::{debug, info, instrument};
 use url::Url;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum FetchError {
     #[error("Too many redirects")]
     TooManyRedirects,

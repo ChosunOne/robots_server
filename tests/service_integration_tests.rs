@@ -1,0 +1,152 @@
+use robots_server::cache::MokaCache;
+use robots_server::fetcher::RobotsFetcher;
+use robots_server::service::robots::AccessResult;
+use robots_server::service::robots::robots_service_server::RobotsService;
+use robots_server::service::{RobotsServer, robots::GetRobotsRequest};
+use tonic::Request;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[tokio::test]
+async fn test_service_cache_miss_then_hit() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("User-agent: *\nDisallow: /private"),
+        )
+        .expect(1) // Should only be called once
+        .mount(&mock_server)
+        .await;
+
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+
+    let url = format!("http://{}/", mock_server.address());
+
+    // First request - cache miss
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await.unwrap();
+    assert_eq!(response.get_ref().http_status_code, 200);
+
+    // Second request - cache hit
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await.unwrap();
+    assert_eq!(response.get_ref().http_status_code, 200);
+
+    // Verify mock was only called once
+    // (wiremock will fail if called more than once due to .expect(1))
+}
+#[tokio::test]
+async fn test_service_404_is_cached() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(404))
+        .expect(1) // Should only be called once
+        .mount(&mock_server)
+        .await;
+
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+
+    let url = format!("http://{}/", mock_server.address());
+
+    // First request - should cache 404
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await.unwrap();
+    assert_eq!(
+        response.get_ref().access_result,
+        AccessResult::Unavailable as i32
+    );
+
+    // Second request - should be cached
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await.unwrap();
+    assert_eq!(
+        response.get_ref().access_result,
+        AccessResult::Unavailable as i32
+    );
+}
+#[tokio::test]
+async fn test_service_500_is_cached() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(1) // Should only be called once
+        .mount(&mock_server)
+        .await;
+
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+
+    let url = format!("http://{}/", mock_server.address());
+
+    // First request - should cache 500
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await.unwrap();
+    assert_eq!(
+        response.get_ref().access_result,
+        AccessResult::Unreachable as i32
+    );
+
+    // Second request - should be cached
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await.unwrap();
+    assert_eq!(
+        response.get_ref().access_result,
+        AccessResult::Unreachable as i32
+    );
+}
+#[tokio::test]
+async fn test_service_invalid_url() {
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+
+    let request = Request::new(GetRobotsRequest {
+        url: "not-a-valid-url".to_string(),
+    });
+
+    let result = service.get_robots_txt(request).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code(), tonic::Code::InvalidArgument);
+}
+#[tokio::test]
+async fn test_service_different_urls_different_cache() {
+    let mock_server_1 = MockServer::start().await;
+    let mock_server_2 = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nAllow: /"))
+        .expect(1) // Called once per unique domain
+        .mount(&mock_server_1)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("User-agent: *\nAllow: /"))
+        .expect(1) // Called once per unique domain
+        .mount(&mock_server_2)
+        .await;
+
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+
+    let url1 = format!("http://{}/", mock_server_1.address());
+    let url2 = format!("http://{}/", mock_server_2.address());
+
+    let request = Request::new(GetRobotsRequest { url: url1 });
+    service.get_robots_txt(request).await.unwrap();
+
+    let request = Request::new(GetRobotsRequest { url: url2 });
+    service.get_robots_txt(request).await.unwrap();
+}
