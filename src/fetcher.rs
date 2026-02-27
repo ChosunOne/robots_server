@@ -77,6 +77,7 @@ impl RobotsFetcher {
                         debug!(error = %e, "invalid chunk in robots.txt");
                         FetchError::Unreachable((e.to_string(), Some(status.as_u16())))
                     })?;
+                    debug!("Streaming repsonse");
                     if total_bytes + chunk.len() > MAX_ROBOTS_TXT_SIZE {
                         truncated = true;
                         let remaining = MAX_ROBOTS_TXT_SIZE - total_bytes;
@@ -89,10 +90,8 @@ impl RobotsFetcher {
                         break;
                     }
 
-                    for (i, &byte) in chunk.iter().enumerate() {
-                        if byte == b'\n' {
-                            last_newline = body.len() + i;
-                        }
+                    if let Some(pos) = chunk.iter().rposition(|&b| b == b'\n') {
+                        last_newline = body.len() + pos;
                     }
 
                     body.push_str(&String::from_utf8_lossy(&chunk));
@@ -102,6 +101,8 @@ impl RobotsFetcher {
                 debug!(body_len = body.len(), "Parsing robots.txt content");
 
                 let robots = RobotsTxt::parse(&body);
+
+                debug!("Successfully parsed robots.txt");
                 let mut data: RobotsData = robots.into();
                 data.content_length_bytes = content_length;
                 data.robots_txt_url = robots_url.clone();
