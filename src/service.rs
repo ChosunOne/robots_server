@@ -101,6 +101,23 @@ impl<T: Cache<String, RobotsData>> RobotsService for RobotsServer<T> {
                         }
                         Ok(Response::new(data.into()))
                     }
+                    Err(FetchError::Timeout) => {
+                        info!("Request timeout");
+                        let data = RobotsData {
+                            target_url: req.url,
+                            robots_txt_url: robots_url,
+                            access_result: AccessResult::Unreachable,
+                            ..Default::default()
+                        };
+                        if let Err(e) = self
+                            .cache
+                            .set(data.robots_txt_url.clone(), data.clone())
+                            .await
+                        {
+                            warn!(error = %e, "Failed to cache robots.txt data");
+                        }
+                        Ok(Response::new(data.into()))
+                    }
                     Err(e) => {
                         warn!(error = %e, "Failed to fetch robots.txt");
                         Err(Status::internal(e.to_string()))

@@ -150,3 +150,31 @@ async fn test_service_different_urls_different_cache() {
     let request = Request::new(GetRobotsRequest { url: url2 });
     service.get_robots_txt(request).await.unwrap();
 }
+
+#[tokio::test]
+async fn test_service_timeout_is_cached() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/robots.txt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(std::time::Duration::from_secs(31)) // Exceeds 30s timeout
+                .set_body_string("User-agent: *\nDisallow: /"),
+        )
+        .expect(1) // Should only be called once
+        .mount(&mock_server)
+        .await;
+    let cache = MokaCache::new();
+    let fetcher = RobotsFetcher::new();
+    let service = RobotsServer::new(cache, fetcher);
+    let url = format!("http://{}/", mock_server.address());
+    // First request - should timeout and cache
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await;
+    // Currently returns Err(Status::internal) - doesn't cache!
+
+    // Second request - should be cached (but currently isn't)
+    let request = Request::new(GetRobotsRequest { url: url.clone() });
+    let response = service.get_robots_txt(request).await;
+    // This will also try to fetch and timeout again
+}
