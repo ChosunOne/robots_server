@@ -1,3 +1,5 @@
+use robotstxt_rs::RobotsTxt;
+
 use crate::service::robots::{
     AccessResult, GetRobotsResponse, Group as ProtoBufGroup, Rule as ProtoBufRule,
 };
@@ -7,10 +9,10 @@ pub struct RobotsData {
     pub target_url: String,
     pub robots_txt_url: String,
     pub access_result: AccessResult,
-    pub http_status_code: i32,
+    pub http_status_code: u32,
     pub groups: Vec<Group>,
     pub sitemaps: Vec<String>,
-    pub content_length_bytes: i64,
+    pub content_length_bytes: u64,
     pub truncated: bool,
 }
 
@@ -57,6 +59,50 @@ impl From<RobotsData> for GetRobotsResponse {
             sitemaps: value.sitemaps,
             content_length_bytes: value.content_length_bytes,
             truncated: value.truncated,
+        }
+    }
+}
+
+impl From<RobotsTxt> for RobotsData {
+    fn from(value: RobotsTxt) -> Self {
+        let mut groups = Vec::new();
+        for (user_agent, rule) in value.get_rules() {
+            let mut rules = Vec::new();
+            for path in &rule.allowed {
+                rules.push(Rule {
+                    rule_type: 1,
+                    path_pattern: path.clone(),
+                });
+            }
+            for path in &rule.disallowed {
+                rules.push(Rule {
+                    rule_type: 2,
+                    path_pattern: path.clone(),
+                });
+            }
+
+            groups.push(Group {
+                user_agents: vec![user_agent.clone()],
+                rules,
+                crawl_delay_seconds: 0,
+            });
+        }
+
+        let sitemaps = value
+            .get_sitemaps()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+
+        Self {
+            target_url: "".to_string(),
+            robots_txt_url: "".to_string(),
+            access_result: AccessResult::Unspecified,
+            http_status_code: 0,
+            groups,
+            sitemaps,
+            content_length_bytes: 0,
+            truncated: false,
         }
     }
 }

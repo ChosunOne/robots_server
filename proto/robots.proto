@@ -23,12 +23,12 @@ message GetRobotsResponse {
   string target_url = 1;
   string robots_txt_url = 2;
   AccessResult access_result = 3;
-  int32 http_status_code = 4;
+  uint32 http_status_code = 4;
 
   repeated Group groups = 5;
   repeated string sitemaps = 6;
 
-  int64 content_length_bytes = 7;
+  uint64 content_length_bytes = 7;
   bool truncated = 8;
 }
 

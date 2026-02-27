@@ -12,14 +12,14 @@ pub struct GetRobotsResponse {
     pub robots_txt_url: ::prost::alloc::string::String,
     #[prost(enumeration = "AccessResult", tag = "3")]
     pub access_result: i32,
-    #[prost(int32, tag = "4")]
-    pub http_status_code: i32,
+    #[prost(uint32, tag = "4")]
+    pub http_status_code: u32,
     #[prost(message, repeated, tag = "5")]
     pub groups: ::prost::alloc::vec::Vec<Group>,
     #[prost(string, repeated, tag = "6")]
     pub sitemaps: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(int64, tag = "7")]
-    pub content_length_bytes: i64,
+    #[prost(uint64, tag = "7")]
+    pub content_length_bytes: u64,
     #[prost(bool, tag = "8")]
     pub truncated: bool,
 }

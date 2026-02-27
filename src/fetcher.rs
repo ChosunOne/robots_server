@@ -12,7 +12,7 @@ pub enum FetchError {
     #[error("Robots.txt unavailable: HTTP {0}")]
     Unavailable(u16),
     #[error("Server unreachable: {0}")]
-    Unreachavle(String),
+    Unreachable(String),
     #[error("Request timeout")]
     Timeout,
     #[error("Failed to parse robots.txt")]
@@ -39,9 +39,32 @@ impl RobotsFetcher {
         let robots_url = extract_robots_url(target_url);
         let response = match self.client.get(&robots_url).send().await {
             Ok(r) => r,
-            _ => todo!(),
+            Err(e) if e.is_timeout() => return Err(FetchError::Timeout),
+            Err(e) => return Err(FetchError::Unreachable(e.to_string())),
         };
-        todo!()
+
+        let status = response.status();
+        let content_length = response.content_length().unwrap_or(0);
+
+        match status.as_u16() {
+            200..=299 => {
+                let body = response.text().await.map_err(|e| {
+                    FetchError::Unreachable("unsupported robots.txt format".to_string())
+                })?;
+                let robots = RobotsTxt::parse(&body);
+                let mut data: RobotsData = robots.into();
+                data.content_length_bytes = content_length;
+                data.target_url = target_url.to_string();
+                data.http_status_code = status.as_u16() as u32;
+                data.access_result = AccessResult::Success;
+                Ok(data)
+            }
+            400..=499 => Err(FetchError::Unavailable(status.as_u16())),
+            500..=599 => Err(FetchError::Unreachable(format!("Server error: {status}"))),
+            _ => Err(FetchError::Unreachable(format!(
+                "Unexpected status: {status}"
+            ))),
+        }
     }
 }
 
