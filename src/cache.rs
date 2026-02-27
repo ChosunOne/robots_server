@@ -2,7 +2,7 @@ use std::hash::Hash;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use moka::future::Cache as MokaCachImpl;
+use moka::future::Cache as MokaCacheImpl;
 use thiserror::Error;
 
 #[async_trait]
@@ -20,13 +20,13 @@ pub type CacheResult<T> = Result<T, CacheError>;
 pub enum CacheError {
     #[error("Cache backend unavailable")]
     Unavailable,
-    #[error("Cache write faield: {0}")]
+    #[error("Cache write failed: {0}")]
     WriteFailed(String),
 }
 
 pub struct MokaCache<K: Hash + Eq + Clone + Send + Sync + 'static, V: Clone + Send + Sync + 'static>
 {
-    cache: MokaCachImpl<K, V>,
+    cache: MokaCacheImpl<K, V>,
 }
 
 impl<K: Hash + Eq + Clone + Send + Sync + 'static, V: Clone + Send + Sync + 'static>
@@ -34,7 +34,7 @@ impl<K: Hash + Eq + Clone + Send + Sync + 'static, V: Clone + Send + Sync + 'sta
 {
     pub fn new() -> Self {
         Self {
-            cache: MokaCachImpl::builder()
+            cache: MokaCacheImpl::builder()
                 .time_to_live(Duration::from_hours(24))
                 .build(),
         }
